@@ -29,6 +29,10 @@ That's it — the bot is live. Terraform builds the Lambda container image,
 pushes it to ECR, creates the table/Lambda/API Gateway, and registers the
 webhook with Telegram.
 
+> **Required:** `allowed_users` must be set to your Telegram numeric user
+> ID(s) (comma-separated). If left empty the bot silently ignores every
+> message, since the handler rejects any user not in the allow-set.
+
 ## Optional
 
 - `alarm_email` — set it to receive billing-alarm emails (you must confirm the

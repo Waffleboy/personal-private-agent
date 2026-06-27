@@ -16,8 +16,12 @@ provider "aws" {
   region = var.aws_region
 }
 
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 data "aws_caller_identity" "current" {}
-data "aws_region" "current" {}
 
 locals {
   registry = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
@@ -179,11 +183,13 @@ resource "aws_lambda_permission" "apigw" {
 }
 
 resource "aws_sns_topic" "alarm" {
-  count = var.alarm_email != "" ? 1 : 0
-  name  = "${var.name_prefix}-alarm"
+  provider = aws.us_east_1
+  count    = var.alarm_email != "" ? 1 : 0
+  name     = "${var.name_prefix}-alarm"
 }
 
 resource "aws_sns_topic_subscription" "alarm_email" {
+  provider  = aws.us_east_1
   count     = var.alarm_email != "" ? 1 : 0
   topic_arn = aws_sns_topic.alarm[0].arn
   protocol  = "email"
@@ -191,6 +197,7 @@ resource "aws_sns_topic_subscription" "alarm_email" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "billing" {
+  provider            = aws.us_east_1
   alarm_name          = "${var.name_prefix}-billing"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
