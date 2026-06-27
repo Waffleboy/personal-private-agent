@@ -22,6 +22,7 @@ def _utcnow() -> str:
 def handle(event, settings, store, agent, *, send=send_message,
            now: Callable[[], str] = _utcnow,
            new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:12]) -> dict:
+    msg = None
     try:
         body = event.get("body")
         update = json.loads(body) if isinstance(body, str) else (body or {})
@@ -36,12 +37,12 @@ def handle(event, settings, store, agent, *, send=send_message,
         send(settings.telegram_token, msg.chat_id, reply)
     except Exception:
         logger.exception("error handling update")
-        try:
-            chat_id = msg.chat_id  # type: ignore[has-type]
-            send(settings.telegram_token, chat_id,
-                 "⚠️ Something went wrong, please try again.")
-        except Exception:
-            logger.exception("failed to send error reply")
+        if msg is not None:
+            try:
+                send(settings.telegram_token, msg.chat_id,
+                     "⚠️ Something went wrong, please try again.")
+            except Exception:
+                logger.exception("failed to send error reply")
     return {"statusCode": 200}
 
 

@@ -83,3 +83,14 @@ def test_internal_error_still_returns_200(ctx):
                       now=lambda: "2026-06-27T00:00:00Z", new_id=lambda: "id1")
     assert resp == {"statusCode": 200}
     assert sent and "try again" in sent[0][1].lower()
+
+
+def test_malformed_body_still_returns_200(ctx):
+    settings, store = ctx
+    sent = []
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    resp = handle({"body": "not-json{{{"}, settings, store, agent,
+                  send=lambda tok, chat, text: sent.append((chat, text)),
+                  now=lambda: "2026-06-27T00:00:00Z", new_id=lambda: "id1")
+    assert resp == {"statusCode": 200}
+    assert sent == []
