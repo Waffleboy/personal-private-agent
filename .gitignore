@@ -1,6 +1,8 @@
 .venv/
+docs/
 __pycache__/
 *.pyc
+*.egg-info/
 .env
 .superpowers/
 infra/.terraform/

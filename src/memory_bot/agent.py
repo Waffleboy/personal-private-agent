@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from pydantic_ai import Agent, RunContext
 
@@ -36,26 +36,36 @@ def build_agent(model: str) -> Agent:
         return "Existing categories: " + ", ".join(cats) + "."
 
     @agent.tool
-    def save_note(ctx: RunContext[AgentDeps], text: str, category: str,
-                  summary: str | None = None) -> str:
+    def save_note(
+        ctx: RunContext[AgentDeps], text: str, category: str, summary: str | None = None
+    ) -> str:
         status = "open" if category == "todo" else None
         note = Note(
-            note_id=ctx.deps.new_id(), text=text, category=category,
-            created_at=ctx.deps.now, summary=summary, status=status,
+            note_id=ctx.deps.new_id(),
+            text=text,
+            category=category,
+            created_at=ctx.deps.now,
+            summary=summary,
+            status=status,
         )
         ctx.deps.store.put_note(ctx.deps.user_id, note)
         return f"Filed under '{category}'."
 
     @agent.tool
-    def search_notes(ctx: RunContext[AgentDeps], query: str,
-                     category: str | None = None) -> list[Note]:
+    def search_notes(
+        ctx: RunContext[AgentDeps], query: str, category: str | None = None
+    ) -> list[Note]:
         return ctx.deps.store.query_notes(ctx.deps.user_id, category=category)
 
     @agent.tool
-    def list_notes(ctx: RunContext[AgentDeps], category: str | None = None,
-                   status: str | None = None) -> list[Note]:
+    def list_notes(
+        ctx: RunContext[AgentDeps],
+        category: str | None = None,
+        status: str | None = None,
+    ) -> list[Note]:
         return ctx.deps.store.query_notes(
-            ctx.deps.user_id, category=category, status=status)
+            ctx.deps.user_id, category=category, status=status
+        )
 
     return agent
 

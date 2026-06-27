@@ -15,8 +15,13 @@ def store():
 
 
 def _note(note_id, category, created_at, status=None):
-    return Note(note_id=note_id, text=f"t-{note_id}", category=category,
-                created_at=created_at, status=status)
+    return Note(
+        note_id=note_id,
+        text=f"t-{note_id}",
+        category=category,
+        created_at=created_at,
+        status=status,
+    )
 
 
 def test_put_and_query_all(store):
@@ -51,8 +56,13 @@ def test_distinct_categories(store):
 def _note_large(note_id, category, created_at, text_size=10000, status=None):
     """Helper to create a note with large text to exceed DynamoDB 1MB page limit."""
     large_text = "x" * text_size
-    return Note(note_id=note_id, text=large_text, category=category,
-                created_at=created_at, status=status)
+    return Note(
+        note_id=note_id,
+        text=large_text,
+        category=category,
+        created_at=created_at,
+        status=status,
+    )
 
 
 def test_pagination_with_large_notes(store):

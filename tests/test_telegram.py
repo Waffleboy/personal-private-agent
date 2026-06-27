@@ -1,11 +1,13 @@
 import json
 
-from memory_bot.telegram import parse_update, send_message, IncomingMessage
+from memory_bot.telegram import IncomingMessage, parse_update, send_message
 
 
 def test_parse_update_extracts_message():
-    update = {"update_id": 1, "message": {
-        "from": {"id": 111}, "chat": {"id": 222}, "text": "hello"}}
+    update = {
+        "update_id": 1,
+        "message": {"from": {"id": 111}, "chat": {"id": 222}, "text": "hello"},
+    }
     msg = parse_update(update)
     assert msg == IncomingMessage(user_id=111, chat_id=222, text="hello")
 
@@ -23,9 +25,15 @@ def test_send_message_posts_to_telegram():
         captured["body"] = json.loads(req.data.decode())
 
         class R:
-            def read(self): return b"{}"
-            def __enter__(self): return self
-            def __exit__(self, *a): return False
+            def read(self):
+                return b"{}"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
         return R()
 
     send_message("TOK", 222, "hi there", urlopen=fake_urlopen)

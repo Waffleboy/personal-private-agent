@@ -5,8 +5,8 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Callable
 
 from memory_bot.agent import AgentDeps, build_agent, run_message
 from memory_bot.config import load_settings
@@ -20,9 +20,16 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def handle(event, settings, store, agent, *, send=send_message,
-           now: Callable[[], str] = _utcnow,
-           new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:12]) -> dict:
+def handle(
+    event,
+    settings,
+    store,
+    agent,
+    *,
+    send=send_message,
+    now: Callable[[], str] = _utcnow,
+    new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:12],
+) -> dict:
     # Verify webhook secret token if configured
     if settings.telegram_secret:
         headers = event.get("headers") or {}
@@ -48,8 +55,11 @@ def handle(event, settings, store, agent, *, send=send_message,
         logger.exception("error handling update")
         if msg is not None:
             try:
-                send(settings.telegram_token, msg.chat_id,
-                     "⚠️ Something went wrong, please try again.")
+                send(
+                    settings.telegram_token,
+                    msg.chat_id,
+                    "⚠️ Something went wrong, please try again.",
+                )
             except Exception:
                 logger.exception("failed to send error reply")
     return {"statusCode": 200}

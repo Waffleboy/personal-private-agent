@@ -45,8 +45,9 @@ class Store:
             item["status"] = note.status
         self._table.put_item(Item=item)
 
-    def query_notes(self, user_id: int, category: str | None = None,
-                    status: str | None = None) -> list[Note]:
+    def query_notes(
+        self, user_id: int, category: str | None = None, status: str | None = None
+    ) -> list[Note]:
         # Paginate through all results; DynamoDB limits to 1 MB per page
         all_items = []
         key_cond = Key("pk").eq(self._pk(user_id))
@@ -70,8 +71,11 @@ class Store:
 
         notes = [
             Note(
-                note_id=i["note_id"], text=i["text"], category=i["category"],
-                created_at=i["created_at"], summary=i.get("summary"),
+                note_id=i["note_id"],
+                text=i["text"],
+                category=i["category"],
+                created_at=i["created_at"],
+                summary=i.get("summary"),
                 status=i.get("status"),
             )
             for i in all_items

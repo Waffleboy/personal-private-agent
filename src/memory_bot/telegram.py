@@ -24,11 +24,13 @@ def parse_update(update: dict) -> IncomingMessage | None:
     return IncomingMessage(user_id=frm["id"], chat_id=chat["id"], text=text)
 
 
-def send_message(token: str, chat_id: int, text: str, *,
-                 urlopen=urllib.request.urlopen) -> None:
+def send_message(
+    token: str, chat_id: int, text: str, *, urlopen=urllib.request.urlopen
+) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = json.dumps({"chat_id": chat_id, "text": text}).encode()
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json"})
+        url, data=data, headers={"Content-Type": "application/json"}
+    )
     with urlopen(req, timeout=10) as resp:
         resp.read()
