@@ -60,3 +60,53 @@ resource "null_resource" "image_push" {
     EOT
   }
 }
+
+resource "aws_dynamodb_table" "notes" {
+  name         = var.table_name
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pk"
+  range_key    = "sk"
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+}
+
+data "aws_iam_policy_document" "lambda_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "lambda" {
+  name               = "${var.name_prefix}-lambda"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+}
+
+data "aws_iam_policy_document" "lambda_perms" {
+  statement {
+    sid       = "Logs"
+    actions   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["arn:aws:logs:*:*:*"]
+  }
+  statement {
+    sid       = "Dynamo"
+    actions   = ["dynamodb:PutItem", "dynamodb:Query"]
+    resources = [aws_dynamodb_table.notes.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda" {
+  name   = "${var.name_prefix}-lambda"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.lambda_perms.json
+}
