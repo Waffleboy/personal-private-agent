@@ -20,8 +20,23 @@ pytest -v
 | `ANTHROPIC_API_KEY` | — | Model provider key |
 | `MEMORY_BOT_MODEL` | `anthropic:claude-sonnet-4-6` | `provider:model` string |
 | `MEMORY_BOT_TABLE` | `notes` | DynamoDB table name |
-| `MEMORY_BOT_ALLOWED_USERS` | (empty) | Comma-separated Telegram user IDs allowed |
+| `MEMORY_BOT_ALLOWED_USERS` | (empty) | Comma-separated Telegram user IDs allowed (required — the bot ignores everyone if empty) |
+| `MEMORY_BOT_WEBHOOK_SECRET` | (empty) | Telegram webhook secret token; verified on each request |
 
-## Deploy (outline)
+When deploying with Terraform (below), these are set for you from
+`terraform.tfvars` — you don't set them by hand.
 
-See `infra/NOTES.md`.
+## Deploy
+
+One `terraform apply` provisions everything on AWS (ECR image, Lambda,
+DynamoDB, API Gateway, billing alarm) and registers the Telegram webhook.
+
+Prerequisites: AWS CLI configured, Docker running, Terraform >= 1.5.
+
+```bash
+cp infra/terraform.tfvars.example infra/terraform.tfvars
+# edit: telegram_bot_token, anthropic_api_key, allowed_users
+cd infra && terraform init && terraform apply
+```
+
+See `infra/NOTES.md` for details and optional settings.
