@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -109,4 +113,35 @@ resource "aws_iam_role_policy" "lambda" {
   name   = "${var.name_prefix}-lambda"
   role   = aws_iam_role.lambda.id
   policy = data.aws_iam_policy_document.lambda_perms.json
+}
+
+resource "random_password" "webhook_secret" {
+  length  = 32
+  special = false
+}
+
+locals {
+  webhook_secret = var.telegram_webhook_secret != "" ? var.telegram_webhook_secret : random_password.webhook_secret.result
+}
+
+resource "aws_lambda_function" "bot" {
+  function_name = var.name_prefix
+  role          = aws_iam_role.lambda.arn
+  package_type  = "Image"
+  image_uri     = local.image_uri
+  memory_size   = 512
+  timeout       = 30
+
+  depends_on = [null_resource.image_push]
+
+  environment {
+    variables = {
+      TELEGRAM_BOT_TOKEN        = var.telegram_bot_token
+      ANTHROPIC_API_KEY         = var.anthropic_api_key
+      MEMORY_BOT_MODEL          = var.model
+      MEMORY_BOT_TABLE          = var.table_name
+      MEMORY_BOT_ALLOWED_USERS  = var.allowed_users
+      MEMORY_BOT_WEBHOOK_SECRET = local.webhook_secret
+    }
+  }
 }
