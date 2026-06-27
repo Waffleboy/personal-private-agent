@@ -177,3 +177,48 @@ resource "aws_lambda_permission" "apigw" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
+
+resource "aws_sns_topic" "alarm" {
+  count = var.alarm_email != "" ? 1 : 0
+  name  = "${var.name_prefix}-alarm"
+}
+
+resource "aws_sns_topic_subscription" "alarm_email" {
+  count     = var.alarm_email != "" ? 1 : 0
+  topic_arn = aws_sns_topic.alarm[0].arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "billing" {
+  alarm_name          = "${var.name_prefix}-billing"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "EstimatedCharges"
+  namespace           = "AWS/Billing"
+  period              = 21600
+  statistic           = "Maximum"
+  threshold           = var.billing_alarm_threshold_usd
+  alarm_description   = "Estimated AWS charges exceeded threshold."
+  dimensions          = { Currency = "USD" }
+  alarm_actions       = var.alarm_email != "" ? [aws_sns_topic.alarm[0].arn] : []
+}
+
+resource "null_resource" "set_webhook" {
+  triggers = {
+    invoke_url = aws_apigatewayv2_api.http.api_endpoint
+    secret     = local.webhook_secret
+  }
+
+  provisioner "local-exec" {
+    interpreter = ["bash", "-c"]
+    command     = <<-EOT
+      set -euo pipefail
+      curl -fsS -X POST "https://api.telegram.org/bot${var.telegram_bot_token}/setWebhook" \
+        -H "Content-Type: application/json" \
+        -d '{"url":"${aws_apigatewayv2_api.http.api_endpoint}/webhook","secret_token":"${local.webhook_secret}"}'
+    EOT
+  }
+
+  depends_on = [aws_apigatewayv2_route.webhook, aws_lambda_permission.apigw]
+}
