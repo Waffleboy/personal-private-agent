@@ -1,0 +1,2 @@
+pydantic-ai-slim[anthropic]>=2,<3
+boto3>=1.34
