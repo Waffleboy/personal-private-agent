@@ -20,3 +20,4 @@ def test_load_settings_defaults():
     assert s.table_name == "notes"
     assert s.model == "anthropic:claude-sonnet-4-6"
     assert s.allowed_users == set()
+    assert s.telegram_secret == ""

@@ -1,4 +1,4 @@
-from memory_bot.models import Note, UserContext
+from memory_bot.models import Note
 
 
 def test_note_minimal():
@@ -6,8 +6,3 @@ def test_note_minimal():
     assert n.text == "hi"
     assert n.summary is None
     assert n.status is None
-
-
-def test_user_context():
-    ctx = UserContext(user_id=42)
-    assert ctx.user_id == 42

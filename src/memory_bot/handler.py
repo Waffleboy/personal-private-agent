@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -22,6 +23,14 @@ def _utcnow() -> str:
 def handle(event, settings, store, agent, *, send=send_message,
            now: Callable[[], str] = _utcnow,
            new_id: Callable[[], str] = lambda: uuid.uuid4().hex[:12]) -> dict:
+    # Verify webhook secret token if configured
+    if settings.telegram_secret:
+        headers = event.get("headers") or {}
+        token = headers.get("x-telegram-bot-api-secret-token", "")
+        if not hmac.compare_digest(token, settings.telegram_secret):
+            logger.info("webhook secret verification failed")
+            return {"statusCode": 200}
+
     msg = None
     try:
         body = event.get("body")

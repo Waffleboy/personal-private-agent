@@ -47,17 +47,34 @@ class Store:
 
     def query_notes(self, user_id: int, category: str | None = None,
                     status: str | None = None) -> list[Note]:
-        resp = self._table.query(
-            KeyConditionExpression=Key("pk").eq(self._pk(user_id)),
-            ScanIndexForward=False,  # newest first
-        )
+        # Paginate through all results; DynamoDB limits to 1 MB per page
+        all_items = []
+        key_cond = Key("pk").eq(self._pk(user_id))
+        exclusive_start_key = None
+
+        while True:
+            query_kwargs = {
+                "KeyConditionExpression": key_cond,
+                "ScanIndexForward": False,  # newest first
+            }
+            if exclusive_start_key is not None:
+                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+            resp = self._table.query(**query_kwargs)
+            all_items.extend(resp.get("Items", []))
+
+            # Check if there are more pages
+            if "LastEvaluatedKey" not in resp:
+                break
+            exclusive_start_key = resp["LastEvaluatedKey"]
+
         notes = [
             Note(
                 note_id=i["note_id"], text=i["text"], category=i["category"],
                 created_at=i["created_at"], summary=i.get("summary"),
                 status=i.get("status"),
             )
-            for i in resp.get("Items", [])
+            for i in all_items
         ]
         if category is not None:
             notes = [n for n in notes if n.category == category]
