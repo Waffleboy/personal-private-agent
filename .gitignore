@@ -3,3 +3,8 @@ __pycache__/
 *.pyc
 .env
 .superpowers/
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/terraform.tfvars
+infra/.terraform.lock.hcl

@@ -1,0 +1,10 @@
+aws_region         = "us-east-1"
+telegram_bot_token = "123456:ABC-your-bot-token"
+anthropic_api_key  = "sk-ant-..."
+allowed_users      = "11111111,22222222"
+
+# Optional
+# model                       = "anthropic:claude-sonnet-4-6"
+# table_name                  = "notes"
+# billing_alarm_threshold_usd = 5
+# alarm_email                 = "you@example.com"
