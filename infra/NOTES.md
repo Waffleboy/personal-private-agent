@@ -1,44 +1,45 @@
 # Deployment
 
-## 1. DynamoDB table
+One `terraform apply` provisions everything and registers the Telegram webhook.
 
-Create a table `notes` with:
-- Partition key `pk` (String), sort key `sk` (String)
-- Billing mode: on-demand (PAY_PER_REQUEST)
+## Prerequisites
 
-## 2. Package the Lambda
+- AWS CLI configured (`aws configure`) with credentials and a default region.
+- Docker installed and running.
+- Terraform >= 1.5 installed.
 
-Pydantic AI + Pydantic add import weight; use a zip with deps or a container
-image. Example zip build:
+## Steps
 
-```bash
-pip install -r requirements.txt -t build/
-cp -r src/memory_bot build/
-cd build && zip -r ../function.zip . && cd ..
-```
+1. Copy the example vars and fill in your secrets:
 
-- Runtime: Python 3.12
-- Handler: `memory_bot.handler.lambda_handler`
-- Env vars: set all from the table in README.
-- Timeout: 30s (model calls). Memory: 512MB.
-- IAM: allow `dynamodb:PutItem`, `dynamodb:Query` on the table.
+   ```bash
+   cp infra/terraform.tfvars.example infra/terraform.tfvars
+   # edit infra/terraform.tfvars: telegram_bot_token, anthropic_api_key, allowed_users
+   ```
 
-## 3. API Gateway
+2. Deploy:
 
-- Create an HTTP API with a single `POST /webhook` route → Lambda integration.
-- Note the invoke URL.
+   ```bash
+   cd infra
+   terraform init
+   terraform apply
+   ```
 
-## 4. Register the webhook with Telegram
+That's it — the bot is live. Terraform builds the Lambda container image,
+pushes it to ECR, creates the table/Lambda/API Gateway, and registers the
+webhook with Telegram.
 
-```bash
-curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://<api-id>.execute-api.<region>.amazonaws.com/webhook"}'
-```
+## Optional
 
-## 5. Cost guard
+- `alarm_email` — set it to receive billing-alarm emails (you must confirm the
+  SNS subscription email).
+- `billing_alarm_threshold_usd` — defaults to 5.
+- `model`, `table_name` — override defaults if needed.
 
-Add a CloudWatch billing alarm so a runaway loop can't surprise you.
+## Updating the bot
+
+Change code under `src/memory_bot/` and re-run `terraform apply`. The image
+hash changes, so Terraform rebuilds, pushes, and updates the Lambda.
 
 ## Phase 2 (not built yet)
 
