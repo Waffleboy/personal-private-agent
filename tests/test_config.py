@@ -21,3 +21,15 @@ def test_load_settings_defaults():
     assert s.model == "anthropic:claude-sonnet-4-6"
     assert s.allowed_users == set()
     assert s.telegram_secret == ""
+
+
+def test_history_exchanges_default():
+    s = load_settings({"TELEGRAM_BOT_TOKEN": "tok"})
+    assert s.history_exchanges == 10
+
+
+def test_history_exchanges_parsed():
+    s = load_settings(
+        {"TELEGRAM_BOT_TOKEN": "tok", "MEMORY_BOT_HISTORY_EXCHANGES": "3"}
+    )
+    assert s.history_exchanges == 3

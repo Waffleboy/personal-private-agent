@@ -46,6 +46,46 @@ def test_user_scoping(store):
     assert [n.note_id for n in store.query_notes(2)] == ["b"]
 
 
+def test_put_and_query_preserves_due_at(store):
+    store.put_note(
+        1,
+        Note(
+            note_id="a",
+            text="finish report",
+            category="todo",
+            created_at="2026-06-27T01:00:00Z",
+            status="open",
+            due_at="2026-06-30T00:00:00Z",
+        ),
+    )
+    store.put_note(1, _note("b", "idea", "2026-06-27T02:00:00Z"))
+    notes = {n.note_id: n for n in store.query_notes(1)}
+    assert notes["a"].due_at == "2026-06-30T00:00:00Z"
+    assert notes["b"].due_at is None
+
+
+def test_get_timezone_defaults_to_none(store):
+    assert store.get_timezone(1) is None
+
+
+def test_set_and_get_timezone(store):
+    store.set_timezone(1, "Asia/Singapore")
+    assert store.get_timezone(1) == "Asia/Singapore"
+
+
+def test_timezone_is_user_scoped(store):
+    store.set_timezone(1, "Asia/Singapore")
+    assert store.get_timezone(2) is None
+
+
+def test_settings_item_excluded_from_notes(store):
+    # The settings item shares the user's pk; it must not be returned as a Note.
+    store.set_timezone(1, "Asia/Singapore")
+    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
+    notes = store.query_notes(1)
+    assert [n.note_id for n in notes] == ["a"]
+
+
 def test_distinct_categories(store):
     store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
     store.put_note(1, _note("b", "todo", "2026-06-27T02:00:00Z"))
@@ -83,3 +123,57 @@ def test_pagination_with_large_notes(store):
     # Verify category filter works across pages
     filtered = store.query_notes(1, category="bulk")
     assert len(filtered) == 120
+
+
+def test_history_defaults_to_empty(store):
+    assert store.get_history(1) == []
+
+
+def test_history_round_trip(store):
+    from pydantic_ai.messages import (
+        ModelRequest,
+        ModelResponse,
+        TextPart,
+        UserPromptPart,
+    )
+
+    msgs = [
+        ModelRequest(parts=[UserPromptPart(content="hi")]),
+        ModelResponse(parts=[TextPart(content="hello")]),
+    ]
+    store.save_history(1, msgs)
+    loaded = store.get_history(1)
+    assert len(loaded) == 2
+    assert loaded[0].parts[0].content == "hi"
+    assert loaded[1].parts[0].content == "hello"
+
+
+def test_history_is_user_scoped(store):
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    store.save_history(1, [ModelRequest(parts=[UserPromptPart(content="hi")])])
+    assert store.get_history(2) == []
+
+
+def test_corrupt_history_returns_empty(store):
+    # Write a garbage blob directly under the history key.
+    store._table.put_item(
+        Item={"pk": store._pk(1), "sk": "history", "messages": "not-valid-json{"}
+    )
+    assert store.get_history(1) == []
+
+
+def test_clear_history_deletes(store):
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    store.save_history(1, [ModelRequest(parts=[UserPromptPart(content="hi")])])
+    store.clear_history(1)
+    assert store.get_history(1) == []
+
+
+def test_history_item_excluded_from_notes(store):
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    store.save_history(1, [ModelRequest(parts=[UserPromptPart(content="hi")])])
+    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
+    assert [n.note_id for n in store.query_notes(1)] == ["a"]

@@ -11,6 +11,7 @@ class Settings:
     allowed_users: set[int]
     telegram_token: str
     telegram_secret: str = ""
+    history_exchanges: int = 10
 
 
 def load_settings(env: Mapping[str, str]) -> Settings:
@@ -22,4 +23,5 @@ def load_settings(env: Mapping[str, str]) -> Settings:
         allowed_users=allowed,
         telegram_token=env.get("TELEGRAM_BOT_TOKEN", ""),
         telegram_secret=env.get("MEMORY_BOT_WEBHOOK_SECRET", ""),
+        history_exchanges=int(env.get("MEMORY_BOT_HISTORY_EXCHANGES", "10")),
     )

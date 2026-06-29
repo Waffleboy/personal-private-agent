@@ -4,6 +4,10 @@ Pull-only Telegram bot: send it notes, it auto-files them into categories;
 ask it questions, it answers from your notes. Serverless on AWS Lambda +
 DynamoDB, powered by Pydantic AI (model swappable via env var).
 
+The bot also remembers your recent conversation (the last 10 user↔bot
+exchanges by default) so follow-up questions keep context. Send `/reset`
+(or `/clear`) to wipe your stored history.
+
 ## Local dev
 
 ```bash
@@ -22,6 +26,7 @@ pytest -v
 | `MEMORY_BOT_TABLE` | `notes` | DynamoDB table name |
 | `MEMORY_BOT_ALLOWED_USERS` | (empty) | Comma-separated Telegram user IDs allowed (required — the bot ignores everyone if empty) |
 | `MEMORY_BOT_WEBHOOK_SECRET` | (empty) | Telegram webhook secret token; verified on each request |
+| `MEMORY_BOT_HISTORY_EXCHANGES` | `10` | Recent user↔bot exchanges remembered; `0` disables conversation memory |
 
 When deploying with Terraform (below), these are set for you from
 `terraform.tfvars` — you don't set them by hand.

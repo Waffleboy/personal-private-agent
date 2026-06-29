@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 import boto3
 from boto3.dynamodb.conditions import Key
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 
 from memory_bot.models import Note
+
+logger = logging.getLogger(__name__)
 
 
 class Store:
@@ -43,14 +48,45 @@ class Store:
             item["summary"] = note.summary
         if note.status is not None:
             item["status"] = note.status
+        if note.due_at is not None:
+            item["due_at"] = note.due_at
         self._table.put_item(Item=item)
+
+    def set_timezone(self, user_id: int, tz: str) -> None:
+        self._table.put_item(Item={"pk": self._pk(user_id), "sk": "settings", "tz": tz})
+
+    def get_timezone(self, user_id: int) -> str | None:
+        resp = self._table.get_item(Key={"pk": self._pk(user_id), "sk": "settings"})
+        item = resp.get("Item")
+        return item.get("tz") if item else None
+
+    def get_history(self, user_id: int) -> list[ModelMessage]:
+        resp = self._table.get_item(Key={"pk": self._pk(user_id), "sk": "history"})
+        item = resp.get("Item")
+        if not item or "messages" not in item:
+            return []
+        try:
+            return list(ModelMessagesTypeAdapter.validate_json(item["messages"]))
+        except Exception:
+            logger.exception("failed to deserialize history for user %s", user_id)
+            return []
+
+    def save_history(self, user_id: int, messages: list[ModelMessage]) -> None:
+        blob = ModelMessagesTypeAdapter.dump_json(messages).decode()
+        self._table.put_item(
+            Item={"pk": self._pk(user_id), "sk": "history", "messages": blob}
+        )
+
+    def clear_history(self, user_id: int) -> None:
+        self._table.delete_item(Key={"pk": self._pk(user_id), "sk": "history"})
 
     def query_notes(
         self, user_id: int, category: str | None = None, status: str | None = None
     ) -> list[Note]:
         # Paginate through all results; DynamoDB limits to 1 MB per page
         all_items = []
-        key_cond = Key("pk").eq(self._pk(user_id))
+        # Scope to note items only; the user pk also holds a "settings" item.
+        key_cond = Key("pk").eq(self._pk(user_id)) & Key("sk").begins_with("note#")
         exclusive_start_key = None
 
         while True:
@@ -77,6 +113,7 @@ class Store:
                 created_at=i["created_at"],
                 summary=i.get("summary"),
                 status=i.get("status"),
+                due_at=i.get("due_at"),
             )
             for i in all_items
         ]

@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 .env
 .superpowers/
+.claude/settings.local.json
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*

@@ -50,6 +50,25 @@ resource "aws_ecr_repository" "bot" {
   }
 }
 
+resource "aws_ecr_lifecycle_policy" "bot" {
+  repository = aws_ecr_repository.bot.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep only the most recent image"
+        selection = {
+          tagStatus   = "any"
+          countType   = "imageCountMoreThan"
+          countNumber = 1
+        }
+        action = { type = "expire" }
+      }
+    ]
+  })
+}
+
 resource "null_resource" "image_push" {
   triggers = {
     source_hash = local.source_hash
@@ -108,7 +127,7 @@ data "aws_iam_policy_document" "lambda_perms" {
   }
   statement {
     sid       = "Dynamo"
-    actions   = ["dynamodb:PutItem", "dynamodb:Query"]
+    actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem"]
     resources = [aws_dynamodb_table.notes.arn]
   }
 }
@@ -126,6 +145,19 @@ resource "random_password" "webhook_secret" {
 
 locals {
   webhook_secret = var.telegram_webhook_secret != "" ? var.telegram_webhook_secret : random_password.webhook_secret.result
+
+  # pydantic-ai reads a provider-specific env var based on the model prefix.
+  llm_provider = split(":", var.model)[0]
+  llm_env_var = {
+    anthropic = "ANTHROPIC_API_KEY"
+    openai    = "OPENAI_API_KEY"
+    google    = "GEMINI_API_KEY"
+  }[local.llm_provider]
+}
+
+resource "aws_cloudwatch_log_group" "lambda" {
+  name              = "/aws/lambda/${var.name_prefix}"
+  retention_in_days = 7
 }
 
 resource "aws_lambda_function" "bot" {
@@ -136,16 +168,17 @@ resource "aws_lambda_function" "bot" {
   memory_size   = 512
   timeout       = 30
 
-  depends_on = [null_resource.image_push]
+  depends_on = [null_resource.image_push, aws_cloudwatch_log_group.lambda]
 
   environment {
     variables = {
-      TELEGRAM_BOT_TOKEN        = var.telegram_bot_token
-      ANTHROPIC_API_KEY         = var.anthropic_api_key
-      MEMORY_BOT_MODEL          = var.model
-      MEMORY_BOT_TABLE          = var.table_name
-      MEMORY_BOT_ALLOWED_USERS  = var.allowed_users
-      MEMORY_BOT_WEBHOOK_SECRET = local.webhook_secret
+      TELEGRAM_BOT_TOKEN           = var.telegram_bot_token
+      (local.llm_env_var)          = var.llm_api_key
+      MEMORY_BOT_MODEL             = var.model
+      MEMORY_BOT_TABLE             = var.table_name
+      MEMORY_BOT_ALLOWED_USERS     = var.allowed_users
+      MEMORY_BOT_WEBHOOK_SECRET    = local.webhook_secret
+      MEMORY_BOT_HISTORY_EXCHANGES = tostring(var.history_exchanges)
     }
   }
 }

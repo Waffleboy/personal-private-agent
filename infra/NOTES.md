@@ -14,7 +14,7 @@ One `terraform apply` provisions everything and registers the Telegram webhook.
 
    ```bash
    cp infra/terraform.tfvars.example infra/terraform.tfvars
-   # edit infra/terraform.tfvars: telegram_bot_token, anthropic_api_key, allowed_users
+   # edit infra/terraform.tfvars: telegram_bot_token, llm_api_key, allowed_users
    ```
 
 2. Deploy:
@@ -38,6 +38,8 @@ webhook with Telegram.
 - `alarm_email` — set it to receive billing-alarm emails (you must confirm the
   SNS subscription email).
 - `billing_alarm_threshold_usd` — defaults to 5.
+- `history_exchanges` — how many recent user↔bot exchanges the bot remembers
+  (default 10). Set to `0` to disable conversation memory.
 - `model`, `table_name` — override defaults if needed.
 
 ## Updating the bot

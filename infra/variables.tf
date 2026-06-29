@@ -9,9 +9,9 @@ variable "telegram_bot_token" {
   sensitive   = true
 }
 
-variable "anthropic_api_key" {
+variable "llm_api_key" {
   type        = string
-  description = "Anthropic API key for the model provider."
+  description = "API key for the LLM provider selected by `model` (Anthropic, OpenAI, or Gemini)."
   sensitive   = true
 }
 
@@ -50,6 +50,12 @@ variable "billing_alarm_threshold_usd" {
   type        = number
   description = "USD threshold for the CloudWatch estimated-charges alarm."
   default     = 5
+}
+
+variable "history_exchanges" {
+  type        = number
+  description = "Number of recent user<->bot exchanges the bot remembers. 0 disables history."
+  default     = 10
 }
 
 variable "alarm_email" {

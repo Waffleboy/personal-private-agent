@@ -9,7 +9,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from memory_bot.agent import build_agent
 from memory_bot.config import Settings
-from memory_bot.handler import handle
+from memory_bot.handler import handle, lambda_handler
 from memory_bot.store import Store
 
 pydantic_ai.models.ALLOW_MODEL_REQUESTS = False
@@ -52,6 +52,137 @@ def _save_agent():
 
     agent = build_agent("anthropic:claude-sonnet-4-6")
     return agent, FunctionModel(call)
+
+
+def test_reset_command_clears_history_and_skips_agent(ctx):
+    settings, store = ctx
+    from pydantic_ai.messages import ModelRequest, UserPromptPart
+
+    store.save_history(111, [ModelRequest(parts=[UserPromptPart(content="old")])])
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _event(111, "/reset"),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    assert resp == {"statusCode": 200}
+    assert store.get_history(111) == []
+    assert sent and "cleared" in sent[0][1].lower()
+    # Agent did not save a note.
+    assert store.query_notes(111) == []
+
+
+def test_clear_command_alias(ctx):
+    settings, store = ctx
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _event(111, "/clear"),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    assert resp == {"statusCode": 200}
+    assert sent and "cleared" in sent[0][1].lower()
+
+
+def test_history_persisted_across_two_messages(ctx):
+    settings, store = ctx
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        handle(
+            _event(111, "remember x"),
+            settings, store, agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    # After one exchange, history is persisted (non-empty).
+    assert store.get_history(111) != []
+
+
+def test_two_turn_history_gives_agent_prior_context(ctx):
+    """End-to-end proof that history flows between two separate handle() calls:
+    the second turn's FunctionModel must see the first turn's user text in the
+    message history it receives, proving the load->run->trim->save->reload
+    round-trip carries context across messages."""
+    settings, store = ctx
+    seen_user_prompt_counts = []
+    saw_first_message_on_turn2 = []
+
+    def call(messages, info: AgentInfo) -> ModelResponse:
+        user_prompts = [
+            p
+            for m in messages
+            for p in getattr(m, "parts", [])
+            if getattr(p, "part_kind", None) == "user-prompt"
+        ]
+        seen_user_prompt_counts.append(len(user_prompts))
+        # On the second turn, record whether turn 1's text is visible.
+        if len(seen_user_prompt_counts) == 2:
+            texts = " ".join(str(p.content) for p in user_prompts)
+            saw_first_message_on_turn2.append("first message" in texts)
+        return ModelResponse(parts=[TextPart("ok")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    model = FunctionModel(call)
+    sent = []
+    with agent.override(model=model):
+        handle(
+            _event(111, "first message"),
+            settings, store, agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+        handle(
+            _event(111, "second message"),
+            settings, store, agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id2",
+        )
+
+    # Turn 2 saw more user prompts than turn 1 (the first turn's prompt persisted).
+    assert seen_user_prompt_counts[0] == 1
+    assert seen_user_prompt_counts[1] > seen_user_prompt_counts[0]
+    # And specifically, turn 1's literal text was present on turn 2.
+    assert saw_first_message_on_turn2 == [True]
+
+
+def test_history_disabled_when_zero(ctx):
+    settings, store = ctx
+    settings = Settings(
+        table_name="notes",
+        model="anthropic:claude-sonnet-4-6",
+        allowed_users={111},
+        telegram_token="TOK",
+        telegram_secret="",
+        history_exchanges=0,
+    )
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        handle(
+            _event(111, "remember x"),
+            settings, store, agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    # With history disabled, nothing is persisted.
+    assert store.get_history(111) == []
 
 
 def test_authorized_message_replies_and_saves(ctx):
@@ -111,7 +242,77 @@ def test_internal_error_still_returns_200(ctx):
             new_id=lambda: "id1",
         )
     assert resp == {"statusCode": 200}
-    assert sent and "try again" in sent[0][1].lower()
+    assert sent and "went wrong" in sent[0][1].lower()
+    # The actual error detail is surfaced so the user can see what broke.
+    assert "model exploded" in sent[0][1]
+
+
+def test_history_load_failure_still_replies(ctx):
+    """A failure loading history must not break messaging: the agent still
+    runs and the user gets a normal reply (not the 'went wrong' error)."""
+    settings, store = ctx
+    store.get_history = lambda uid: (_ for _ in ()).throw(RuntimeError("boom"))
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _event(111, "remember x"),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    assert resp == {"statusCode": 200}
+    assert sent and sent[0][0] == 111
+    assert "went wrong" not in sent[0][1].lower()
+    assert sent[0][1] == "Filed under idea."
+
+
+def test_history_save_failure_still_replies(ctx):
+    """A failure saving history is logged but does not change the
+    user-visible reply: the normal reply is still sent."""
+    settings, store = ctx
+    store.save_history = lambda uid, msgs: (_ for _ in ()).throw(
+        RuntimeError("boom")
+    )
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _event(111, "remember x"),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+        )
+    assert resp == {"statusCode": 200}
+    assert sent and sent[0][0] == 111
+    assert "went wrong" not in sent[0][1].lower()
+    assert sent[0][1] == "Filed under idea."
+
+
+def test_init_failure_reports_error_to_chat(monkeypatch):
+    """A crash during init (bad config / unknown provider) is surfaced to the
+    user's chat instead of failing silently before handle() runs."""
+    sent = []
+    monkeypatch.setattr(
+        "memory_bot.handler.send_message",
+        lambda tok, chat, text: sent.append((chat, text)),
+    )
+    # An unknown provider makes build_agent() raise during init, mirroring the
+    # real "Unknown provider: google-gla" failure.
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "TOK")
+    monkeypatch.setenv("MEMORY_BOT_ALLOWED_USERS", "111")
+    monkeypatch.setenv("MEMORY_BOT_MODEL", "bogus-provider:some-model")
+    event = _event(111, "hi")
+    resp = lambda_handler(event, None)
+    assert resp == {"statusCode": 200}
+    assert sent and sent[0][0] == 111
+    assert "Unknown provider" in sent[0][1]
 
 
 def test_malformed_body_still_returns_200(ctx):

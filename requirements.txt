@@ -1,3 +1,5 @@
 # Azure OpenAI is served through the openai extra (AzureProvider), so no separate azure extra.
-pydantic-ai-slim[anthropic,openai]>=2,<3
+pydantic-ai-slim[anthropic,openai,google]>=2,<3
 boto3>=1.34
+# Bundles the IANA tz database; Lambda's runtime has no system zoneinfo.
+tzdata>=2024.1
