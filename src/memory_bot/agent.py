@@ -55,9 +55,9 @@ def _local_now(now_utc: str, tz: str | None) -> str:
 
 
 def build_agent(model: str) -> Agent:
-    agent = Agent(model, deps_type=AgentDeps, system_prompt=SYSTEM_PROMPT)
+    agent = Agent(model, deps_type=AgentDeps, instructions=SYSTEM_PROMPT)
 
-    @agent.system_prompt
+    @agent.instructions
     def current_datetime(ctx: RunContext[AgentDeps]) -> str:
         tz = ctx.deps.store.get_timezone(ctx.deps.user_id)
         local = _local_now(ctx.deps.now, tz)
@@ -70,7 +70,7 @@ def build_agent(model: str) -> Agent:
             f"The user's timezone is {tz}. The current local date and time is {local}."
         )
 
-    @agent.system_prompt
+    @agent.instructions
     def notes_working_memory(ctx: RunContext[AgentDeps]) -> str:
         notes = [
             n
