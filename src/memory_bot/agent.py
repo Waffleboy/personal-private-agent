@@ -36,11 +36,21 @@ SYSTEM_PROMPT = (
     "When the user says they finished something, find the matching note below "
     "and call mark_done with its id. If more than one note could match, ask the "
     "user which one before marking anything done. "
+    "When the user asks to remove, delete, or get rid of a note entirely (as "
+    "opposed to completing it), find the matching note below and call "
+    "delete_note with its id. Deletion is permanent and cannot be undone, so "
+    "confirm with the user which note they mean before deleting unless they "
+    "have already made it unambiguous. If more than one note could match, ask "
+    "which one before deleting anything. "
     "When the user gives a deadline (e.g. 'due tomorrow', 'by Friday'), resolve "
     "it relative to the current date below and in the user's timezone into an "
     "absolute ISO 8601 timestamp that includes the UTC offset, then pass it as "
     "save_note's due_at. If the user has no timezone set, ask them to set one "
-    "with set_timezone before interpreting relative deadlines."
+    "with set_timezone before interpreting relative deadlines. "
+    "When you reply to the user, never show the internal note ids in brackets; "
+    "they are for your own use with mark_done only. Render any due date or time "
+    "in a friendly, human-readable way in the user's timezone (e.g. 'tomorrow at "
+    "5pm' or 'Fri, 29 Jun at 11:59pm'), not as a raw ISO timestamp."
 )
 
 
@@ -142,6 +152,13 @@ def build_agent(model: str) -> Agent:
         """Mark a note as done by its id. Ids are shown in the notes list."""
         if ctx.deps.store.mark_done(ctx.deps.user_id, note_id):
             return "Marked done."
+        return f"No note with id '{note_id}'."
+
+    @agent.tool
+    def delete_note(ctx: RunContext[AgentDeps], note_id: str) -> str:
+        """Permanently delete a note by its id. Ids are shown in the notes list."""
+        if ctx.deps.store.delete_note(ctx.deps.user_id, note_id):
+            return "Removed."
         return f"No note with id '{note_id}'."
 
     return agent

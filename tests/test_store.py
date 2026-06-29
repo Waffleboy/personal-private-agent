@@ -187,6 +187,38 @@ def test_mark_done_unknown_id_returns_false(store):
     assert store.mark_done(1, "nope") is False
 
 
+def test_delete_note_removes_entry(store):
+    store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+    deleted = store.delete_note(1, "abc123")
+    assert deleted is True
+    assert store.query_notes(1) == []
+
+
+def test_delete_note_unknown_id_returns_false(store):
+    assert store.delete_note(1, "nope") is False
+
+
+def test_delete_note_only_removes_target(store):
+    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
+    store.put_note(1, _note("b", "todo", "2026-06-27T02:00:00Z"))
+    assert store.delete_note(1, "a") is True
+    assert [n.note_id for n in store.query_notes(1)] == ["b"]
+
+
+def test_delete_note_finds_note_on_later_page(store):
+    """Regression guard: delete_note must paginate, mirroring mark_done."""
+    for i in range(120):
+        ts = f"2026-06-27T{(i // 60):02d}:{(i % 60):02d}:00Z"
+        store.put_note(1, _note_large(f"note-{i:03d}", "bulk", ts, text_size=10000))
+
+    target_id = "note-119"
+    assert store.delete_note(1, target_id) is True
+    assert target_id not in {n.note_id for n in store.query_notes(1)}
+
+
 def test_mark_done_finds_note_on_later_page(store):
     """Regression guard: mark_done must paginate, not just read page 1.
 

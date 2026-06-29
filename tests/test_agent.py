@@ -202,6 +202,61 @@ def test_mark_done_tool_unknown_id_reports_not_found(deps):
     assert deps.store.query_notes(1)[0].status == "open"
 
 
+def test_delete_note_tool_removes_note(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("delete_note", {"note_id": "abc123"})]
+            )
+        return ModelResponse(parts=[TextPart("Removed.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        run_message(agent, deps, "remove the deploy task")
+    assert deps.store.query_notes(1) == []
+
+
+def test_delete_note_tool_unknown_id_reports_not_found(deps):
+    from pydantic_ai.messages import ToolReturnPart
+
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("delete_note", {"note_id": "nope"})]
+            )
+        return ModelResponse(parts=[TextPart("No such note.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        _, messages = run_message(agent, deps, "remove nope")
+
+    returns = [
+        p.content
+        for m in messages
+        for p in m.parts
+        if isinstance(p, ToolReturnPart) and p.tool_name == "delete_note"
+    ]
+    assert returns, "expected a delete_note tool return"
+    assert "nope" in returns[0]
+    assert "no note" in returns[0].lower()
+    # The existing note must be untouched.
+    assert deps.store.query_notes(1)[0].note_id == "abc123"
+
+
 def _capture_instructions(agent, deps, text="hello", message_history=None):
     captured = []
 

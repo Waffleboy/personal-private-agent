@@ -86,6 +86,36 @@ class Store:
 
         return False
 
+    def delete_note(self, user_id: int, note_id: str) -> bool:
+        """Permanently delete a note by its id. Returns True if found.
+
+        Uses pagination to handle notes spanning multiple 1MB DynamoDB pages.
+        """
+        key_cond = Key("pk").eq(self._pk(user_id)) & Key("sk").begins_with("note#")
+        exclusive_start_key = None
+
+        while True:
+            query_kwargs = {
+                "KeyConditionExpression": key_cond,
+            }
+            if exclusive_start_key is not None:
+                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+            resp = self._table.query(**query_kwargs)
+
+            for item in resp.get("Items", []):
+                if item.get("note_id") == note_id:
+                    self._table.delete_item(
+                        Key={"pk": item["pk"], "sk": item["sk"]}
+                    )
+                    return True
+
+            if "LastEvaluatedKey" not in resp:
+                break
+            exclusive_start_key = resp["LastEvaluatedKey"]
+
+        return False
+
     def set_timezone(self, user_id: int, tz: str) -> None:
         self._table.put_item(Item={"pk": self._pk(user_id), "sk": "settings", "tz": tz})
 
