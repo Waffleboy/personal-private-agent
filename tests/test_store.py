@@ -86,13 +86,6 @@ def test_settings_item_excluded_from_notes(store):
     assert [n.note_id for n in notes] == ["a"]
 
 
-def test_distinct_categories(store):
-    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
-    store.put_note(1, _note("b", "todo", "2026-06-27T02:00:00Z"))
-    store.put_note(1, _note("c", "idea", "2026-06-27T03:00:00Z"))
-    assert sorted(store.distinct_categories(1)) == ["idea", "todo"]
-
-
 def _note_large(note_id, category, created_at, text_size=10000, status=None):
     """Helper to create a note with large text to exceed DynamoDB 1MB page limit."""
     large_text = "x" * text_size
@@ -177,3 +170,44 @@ def test_history_item_excluded_from_notes(store):
     store.save_history(1, [ModelRequest(parts=[UserPromptPart(content="hi")])])
     store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
     assert [n.note_id for n in store.query_notes(1)] == ["a"]
+
+
+def test_mark_done_sets_status(store):
+    store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+    updated = store.mark_done(1, "abc123")
+    assert updated is True
+    note = store.query_notes(1)[0]
+    assert note.status == "done"
+
+
+def test_mark_done_unknown_id_returns_false(store):
+    assert store.mark_done(1, "nope") is False
+
+
+def test_mark_done_finds_note_on_later_page(store):
+    """Regression guard: mark_done must paginate, not just read page 1.
+
+    Insert ~120 notes of ~10KB each (>1MB total) so they span multiple
+    DynamoDB query pages. mark_done scans in ascending sort-key order, so a
+    note with one of the LATEST timestamps (highest index) lives on a later
+    page; a single non-paginating query would miss it. This test fails against
+    a single-query implementation and passes against the paginating one.
+    """
+    for i in range(120):
+        ts = f"2026-06-27T{(i // 60):02d}:{(i % 60):02d}:00Z"
+        store.put_note(1, _note_large(f"note-{i:03d}", "bulk", ts, text_size=10000))
+
+    # Latest-inserted note: highest sort key -> on a later page of mark_done's
+    # ascending query, forcing its LastEvaluatedKey loop to actually advance.
+    target_id = "note-119"
+    assert store.mark_done(1, target_id) is True
+
+    notes = {n.note_id: n for n in store.query_notes(1)}
+    assert notes[target_id].status == "done"
+    # Every other note is untouched.
+    for note_id, note in notes.items():
+        if note_id != target_id:
+            assert note.status is None

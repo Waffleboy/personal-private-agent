@@ -171,6 +171,138 @@ def test_list_notes_tool_returns_todos(deps):
     assert "task one" in out
 
 
+def test_mark_done_tool_completes_note(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("mark_done", {"note_id": "abc123"})]
+            )
+        return ModelResponse(parts=[TextPart("Marked done.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        run_message(agent, deps, "done with the deploy")
+    assert deps.store.query_notes(1)[0].status == "done"
+
+
+def test_mark_done_tool_unknown_id_reports_not_found(deps):
+    from pydantic_ai.messages import ToolReturnPart
+
+    from memory_bot.models import Note
+
+    # A note exists, but with a different id than the one we mark done.
+    deps.store.put_note(1, Note(
+        note_id="abc123", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("mark_done", {"note_id": "nope"})]
+            )
+        return ModelResponse(parts=[TextPart("No such note.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        _, messages = run_message(agent, deps, "done with nope")
+
+    returns = [
+        p.content
+        for m in messages
+        for p in m.parts
+        if isinstance(p, ToolReturnPart) and p.tool_name == "mark_done"
+    ]
+    assert returns, "expected a mark_done tool return"
+    assert "nope" in returns[0]
+    assert "no note" in returns[0].lower()
+    # The existing note must be untouched.
+    assert deps.store.query_notes(1)[0].status == "open"
+
+
+def _capture_system_prompt(agent, deps, text="hello"):
+    captured = []
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        for m in messages:
+            if isinstance(m, ModelRequest):
+                for part in m.parts:
+                    if isinstance(part, SystemPromptPart):
+                        captured.append(part.content)
+        return ModelResponse(parts=[TextPart("ok")])
+
+    with agent.override(model=FunctionModel(call)):
+        run_message(agent, deps, text)
+    return "\n".join(captured)
+
+
+def test_working_memory_injects_live_notes(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="b2c", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+        due_at="2026-06-29T23:59:00+08:00",
+    ))
+    deps.store.put_note(1, Note(
+        note_id="a3f", text="text mom tonight", category="family",
+        created_at="2026-06-29T11:00:00Z",
+    ))
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    prompt = _capture_system_prompt(agent, deps)
+    assert "work log" in prompt
+    assert "deploy prod" in prompt
+    assert "2026-06-29T23:59:00+08:00" in prompt  # due date shown
+    assert "b2c" in prompt  # note id shown
+    assert "family" in prompt
+    assert "text mom tonight" in prompt
+
+
+def test_working_memory_excludes_done_notes(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="d1", text="old finished task", category="todo",
+        created_at="2026-06-29T09:00:00Z", status="done",
+    ))
+    deps.store.put_note(1, Note(
+        note_id="o1", text="still open task", category="todo",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    prompt = _capture_system_prompt(agent, deps)
+    assert "still open task" in prompt
+    assert "old finished task" not in prompt
+
+
+def test_working_memory_empty_state(deps):
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    prompt = _capture_system_prompt(agent, deps)
+    assert "No notes yet." in prompt
+
+
+def test_worklog_note_visible_for_todo_query(deps):
+    from memory_bot.models import Note
+
+    # The original bug: note filed under "work log", user asks for to-dos.
+    deps.store.put_note(1, Note(
+        note_id="b2c", text="deploy prod tonight", category="work log",
+        created_at="2026-06-29T22:34:00Z", status=None,
+    ))
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    prompt = _capture_system_prompt(agent, deps, text="what's in my list to do")
+    # The deploy item is in the model's context regardless of category name.
+    assert "deploy prod tonight" in prompt
+    assert "work log" in prompt
+
+
 def _req(text):
     from pydantic_ai.messages import ModelRequest, UserPromptPart
     return ModelRequest(parts=[UserPromptPart(content=text)])

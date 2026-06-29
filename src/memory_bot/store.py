@@ -52,6 +52,40 @@ class Store:
             item["due_at"] = note.due_at
         self._table.put_item(Item=item)
 
+    def mark_done(self, user_id: int, note_id: str) -> bool:
+        """Set a note's status to 'done'. Returns True if found, False otherwise.
+
+        Uses pagination to handle notes spanning multiple 1MB DynamoDB pages.
+        """
+        key_cond = Key("pk").eq(self._pk(user_id)) & Key("sk").begins_with("note#")
+        exclusive_start_key = None
+
+        while True:
+            query_kwargs = {
+                "KeyConditionExpression": key_cond,
+            }
+            if exclusive_start_key is not None:
+                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+            resp = self._table.query(**query_kwargs)
+
+            for item in resp.get("Items", []):
+                if item.get("note_id") == note_id:
+                    self._table.update_item(
+                        Key={"pk": item["pk"], "sk": item["sk"]},
+                        UpdateExpression="SET #s = :done",
+                        ExpressionAttributeNames={"#s": "status"},
+                        ExpressionAttributeValues={":done": "done"},
+                    )
+                    return True
+
+            # Check if there are more pages
+            if "LastEvaluatedKey" not in resp:
+                break
+            exclusive_start_key = resp["LastEvaluatedKey"]
+
+        return False
+
     def set_timezone(self, user_id: int, tz: str) -> None:
         self._table.put_item(Item={"pk": self._pk(user_id), "sk": "settings", "tz": tz})
 
@@ -122,6 +156,3 @@ class Store:
         if status is not None:
             notes = [n for n in notes if n.status == status]
         return notes
-
-    def distinct_categories(self, user_id: int) -> list[str]:
-        return sorted({n.category for n in self.query_notes(user_id)})

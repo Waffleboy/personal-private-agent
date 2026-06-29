@@ -21,18 +21,26 @@ class AgentDeps:
 
 
 SYSTEM_PROMPT = (
-    "You are a personal assistant. Your job is to help the user manage their "
-    "information."
-    "When the user shares information, first, see if it fits an existing "
-    "category. If not, think about a new category then save it."
-    "Save notes using save_note with a short lowercase category."
-    "When they ask a question, use list_notes or search_notes and answer concisely."
-    "Reuse an existing category when one fits rather than inventing a near-duplicate."
-    "When the user gives a deadline (e.g. 'due tomorrow', 'by Friday'), resolve it "
-    "relative to the current date below and in the user's timezone into an absolute "
-    "ISO 8601 timestamp that includes the UTC offset, then pass it as save_note's "
-    "due_at. If the user has no timezone set, ask them to set one with set_timezone "
-    "before interpreting relative deadlines."
+    "You are a helpful personal assistant. Your job is to help the user manage "
+    "their information. Your memory of the user's notes is injected below, "
+    "grouped by category, with a short id in brackets after each note. "
+    "When the user shares information, file it with save_note under a short "
+    "lowercase category. Reuse an existing category when one fits; create a new "
+    "one when none do, rather than inventing a near-duplicate. "
+    "When the user asks what they have to do or what's on a list, reason over "
+    "the notes below across ALL categories and answer at the scope they asked "
+    "(everything, or just work, or just family, etc.). Do not rely on an exact "
+    "category-name match. The notes below are your source of truth for live "
+    "items; only use search_notes or list_notes for the past or completed items "
+    "not shown below. "
+    "When the user says they finished something, find the matching note below "
+    "and call mark_done with its id. If more than one note could match, ask the "
+    "user which one before marking anything done. "
+    "When the user gives a deadline (e.g. 'due tomorrow', 'by Friday'), resolve "
+    "it relative to the current date below and in the user's timezone into an "
+    "absolute ISO 8601 timestamp that includes the UTC offset, then pass it as "
+    "save_note's due_at. If the user has no timezone set, ask them to set one "
+    "with set_timezone before interpreting relative deadlines."
 )
 
 
@@ -63,11 +71,24 @@ def build_agent(model: str) -> Agent:
         )
 
     @agent.system_prompt
-    def existing_categories(ctx: RunContext[AgentDeps]) -> str:
-        cats = ctx.deps.store.distinct_categories(ctx.deps.user_id)
-        if not cats:
-            return "No categories exist yet."
-        return "Existing categories: " + ", ".join(cats) + "."
+    def notes_working_memory(ctx: RunContext[AgentDeps]) -> str:
+        notes = [
+            n
+            for n in ctx.deps.store.query_notes(ctx.deps.user_id)
+            if n.status != "done"
+        ]
+        if not notes:
+            return "No notes yet."
+        by_cat: dict[str, list[Note]] = {}
+        for n in notes:
+            by_cat.setdefault(n.category, []).append(n)
+        lines = ["Your notes, grouped by category (this is your memory):"]
+        for cat in sorted(by_cat):
+            lines.append(f"[{cat}]")
+            for n in by_cat[cat]:
+                due = f" (due {n.due_at})" if n.due_at else ""
+                lines.append(f"- {n.text}{due} [{n.note_id}]")
+        return "\n".join(lines)
 
     @agent.tool
     def save_note(
@@ -115,6 +136,13 @@ def build_agent(model: str) -> Agent:
         return ctx.deps.store.query_notes(
             ctx.deps.user_id, category=category, status=status
         )
+
+    @agent.tool
+    def mark_done(ctx: RunContext[AgentDeps], note_id: str) -> str:
+        """Mark a note as done by its id. Ids are shown in the notes list."""
+        if ctx.deps.store.mark_done(ctx.deps.user_id, note_id):
+            return "Marked done."
+        return f"No note with id '{note_id}'."
 
     return agent
 
