@@ -25,8 +25,19 @@ SYSTEM_PROMPT = (
     "their information. Your memory of the user's notes is injected below, "
     "grouped by category, with a short id in brackets after each note. "
     "When the user shares information, file it with save_note under a short "
-    "lowercase category. Reuse an existing category when one fits; create a new "
-    "one when none do, rather than inventing a near-duplicate. "
+    "lowercase category. "
+    "A category is a broad, durable area of the user's life -- NOT a restatement "
+    "of the note. Think of a handful of buckets a person would actually keep, "
+    "such as work, school, family, health, finance, home, errands, social, or "
+    "todo. The specifics of the note belong in its text, never in the category "
+    "name. Never coin a hyper-specific category that just paraphrases one note "
+    "(e.g. do NOT create 'student_emails', 'dentist_appt', or 'pay_rent'). "
+    "Examples: 'reply to my students' emails' -> category 'school'; 'book a "
+    "dentist appointment' -> category 'health'; 'pay the electricity bill' -> "
+    "category 'finance'; 'call mom this weekend' -> category 'family'. "
+    "Prefer reusing one of the user's existing categories listed below "
+    "over creating a new one; only create a new category when the note genuinely "
+    "belongs to a life area none of the existing ones cover. "
     "When the user asks what they have to do or what's on a list, reason over "
     "the notes below across ALL categories and answer at the scope they asked "
     "(everything, or just work, or just family, etc.). Do not rely on an exact "
@@ -92,7 +103,12 @@ def build_agent(model: str) -> Agent:
         by_cat: dict[str, list[Note]] = {}
         for n in notes:
             by_cat.setdefault(n.category, []).append(n)
-        lines = ["Your notes, grouped by category (this is your memory):"]
+        existing = ", ".join(sorted(by_cat))
+        lines = [
+            f"Existing categories: {existing}. Strongly prefer filing new notes "
+            "under one of these unless none fit.",
+            "Your notes, grouped by category (this is your memory):",
+        ]
         for cat in sorted(by_cat):
             lines.append(f"[{cat}]")
             for n in by_cat[cat]:

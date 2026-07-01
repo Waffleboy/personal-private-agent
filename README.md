@@ -4,6 +4,12 @@ Pull-only Telegram bot: send it notes, it auto-files them into categories;
 ask it questions, it answers from your notes. Serverless on AWS Lambda +
 DynamoDB, powered by Pydantic AI (model swappable via env var).
 
+Notes are filed under broad, durable life-areas (e.g. `work`, `school`,
+`family`, `health`, `finance`, `todo`) rather than a restatement of the note
+itself, and the model prefers reusing your existing categories over coining
+new near-duplicates. So "reply to my students' emails" lands in `school`, not
+`student_emails`.
+
 The bot also remembers your recent conversation (the last 10 user↔bot
 exchanges by default) so follow-up questions keep context. Send `/reset`
 (or `/clear`) to wipe your stored history.

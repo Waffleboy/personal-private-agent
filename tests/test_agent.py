@@ -293,6 +293,23 @@ def test_working_memory_injects_live_notes(deps):
     assert "text mom tonight" in prompt
 
 
+def test_working_memory_lists_existing_categories(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="b2c", text="deploy prod", category="work",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+    deps.store.put_note(1, Note(
+        note_id="a3f", text="text mom tonight", category="family",
+        created_at="2026-06-29T11:00:00Z",
+    ))
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    prompt = _capture_instructions(agent, deps)
+    # The existing categories are surfaced up front to bias reuse (option C).
+    assert "Existing categories: family, work" in prompt
+
+
 def test_working_memory_excludes_done_notes(deps):
     from memory_bot.models import Note
 
