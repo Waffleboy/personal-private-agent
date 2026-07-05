@@ -53,6 +53,11 @@ SYSTEM_PROMPT = (
     "confirm with the user which note they mean before deleting unless they "
     "have already made it unambiguous. If more than one note could match, ask "
     "which one before deleting anything. "
+    "When the user asks to remove or delete an entire category (all of its "
+    "notes at once), call delete_category with the category name. This is "
+    "permanent and cannot be undone, so always confirm with the user how many "
+    "notes are in that category and that they want all of them gone before "
+    "calling it, unless they have already made it unambiguous. "
     "When the user gives a deadline (e.g. 'due tomorrow', 'by Friday'), resolve "
     "it relative to the current date below and in the user's timezone into an "
     "absolute ISO 8601 timestamp that includes the UTC offset, then pass it as "
@@ -176,6 +181,16 @@ def build_agent(model: str) -> Agent:
         if ctx.deps.store.delete_note(ctx.deps.user_id, note_id):
             return "Removed."
         return f"No note with id '{note_id}'."
+
+    @agent.tool
+    def delete_category(ctx: RunContext[AgentDeps], category: str) -> str:
+        """Permanently delete every note in a category. Category names are shown
+        in the notes list."""
+        count = ctx.deps.store.delete_category(ctx.deps.user_id, category)
+        if count == 0:
+            return f"No notes in category '{category}'."
+        noun = "note" if count == 1 else "notes"
+        return f"Removed {count} {noun} in '{category}'."
 
     return agent
 

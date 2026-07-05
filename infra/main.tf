@@ -127,7 +127,7 @@ data "aws_iam_policy_document" "lambda_perms" {
   }
   statement {
     sid       = "Dynamo"
-    actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem"]
+    actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:Query", "dynamodb:DeleteItem", "dynamodb:UpdateItem"]
     resources = [aws_dynamodb_table.notes.arn]
   }
 }
@@ -179,6 +179,7 @@ resource "aws_lambda_function" "bot" {
       MEMORY_BOT_ALLOWED_USERS     = var.allowed_users
       MEMORY_BOT_WEBHOOK_SECRET    = local.webhook_secret
       MEMORY_BOT_HISTORY_EXCHANGES = tostring(var.history_exchanges)
+      MEMORY_BOT_VOICE_MAX_SECONDS = tostring(var.voice_max_seconds)
     }
   }
 }

@@ -9,3 +9,4 @@ allowed_users      = "11111111,22222222"
 # billing_alarm_threshold_usd = 5
 # alarm_email                 = "you@example.com"
 # history_exchanges           = 10
+# voice_max_seconds           = 120

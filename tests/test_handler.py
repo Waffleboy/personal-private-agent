@@ -26,6 +26,18 @@ def _event(user_id, text, headers=None):
     return event
 
 
+def _voice_event(user_id, file_id="v1", duration=5, mime="audio/ogg"):
+    body = {
+        "update_id": 1,
+        "message": {
+            "from": {"id": user_id},
+            "chat": {"id": user_id},
+            "voice": {"file_id": file_id, "duration": duration, "mime_type": mime},
+        },
+    }
+    return {"body": json.dumps(body)}
+
+
 @pytest.fixture
 def ctx():
     with mock_aws():
@@ -52,6 +64,131 @@ def _save_agent():
 
     agent = build_agent("anthropic:claude-sonnet-4-6")
     return agent, FunctionModel(call)
+
+
+def test_voice_note_transcribed_echoed_and_saved(ctx):
+    settings, store = ctx
+    sent = []
+    downloaded = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _voice_event(111),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+            download=lambda tok, fid: downloaded.append(fid) or b"AUDIO",
+            transcriber=lambda m, b, mt: "remember to buy milk",
+        )
+    assert resp == {"statusCode": 200}
+    assert downloaded == ["v1"]
+    # Echo sent first, then the agent's reply.
+    assert "heard" in sent[0][1].lower()
+    assert "buy milk" in sent[0][1]
+    assert sent[1][1] == "Filed under idea."
+    assert len(store.query_notes(111)) == 1
+
+
+def test_voice_note_over_cap_rejected_without_download(ctx):
+    settings, store = ctx
+    sent = []
+    downloaded = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _voice_event(111, duration=999),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+            download=lambda tok, fid: downloaded.append(fid) or b"AUDIO",
+            transcriber=lambda m, b, mt: "should not run",
+        )
+    assert resp == {"statusCode": 200}
+    assert downloaded == []
+    assert sent and "too long" in sent[0][1].lower()
+    assert store.query_notes(111) == []
+
+
+def test_over_cap_message_reports_non_minute_cap(ctx):
+    """A sub-minute cap must not be reported as '0 min' (regression on // 60)."""
+    settings, store = ctx
+    settings = Settings(
+        table_name="notes",
+        model="anthropic:claude-sonnet-4-6",
+        allowed_users={111},
+        telegram_token="TOK",
+        telegram_secret="",
+        voice_max_seconds=45,
+    )
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        handle(
+            _voice_event(111, duration=999),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+            download=lambda tok, fid: b"AUDIO",
+            transcriber=lambda m, b, mt: "should not run",
+        )
+    assert sent and "45 sec" in sent[0][1]
+    assert "0 min" not in sent[0][1]
+
+
+def test_voice_note_empty_transcript_replies_and_skips_agent(ctx):
+    settings, store = ctx
+    sent = []
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _voice_event(111),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+            download=lambda tok, fid: b"AUDIO",
+            transcriber=lambda m, b, mt: "",
+        )
+    assert resp == {"statusCode": 200}
+    assert sent and "make out" in sent[0][1].lower()
+    assert store.query_notes(111) == []
+
+
+def test_voice_note_transcribe_failure_replies_gracefully(ctx):
+    settings, store = ctx
+    sent = []
+
+    def boom(m, b, mt):
+        raise RuntimeError("gemini down")
+
+    agent, model = _save_agent()
+    with agent.override(model=model):
+        resp = handle(
+            _voice_event(111),
+            settings,
+            store,
+            agent,
+            send=lambda tok, chat, text: sent.append((chat, text)),
+            now=lambda: "2026-06-27T00:00:00Z",
+            new_id=lambda: "id1",
+            download=lambda tok, fid: b"AUDIO",
+            transcriber=boom,
+        )
+    assert resp == {"statusCode": 200}
+    assert sent and "🎙️" in sent[0][1]
+    assert "went wrong" not in sent[0][1].lower()
+    assert store.query_notes(111) == []
 
 
 def test_reset_command_clears_history_and_skips_agent(ctx):

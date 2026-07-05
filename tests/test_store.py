@@ -219,6 +219,30 @@ def test_delete_note_finds_note_on_later_page(store):
     assert target_id not in {n.note_id for n in store.query_notes(1)}
 
 
+def test_delete_category_removes_all_notes_in_category(store):
+    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
+    store.put_note(1, _note("b", "todo", "2026-06-27T02:00:00Z"))
+    store.put_note(1, _note("c", "idea", "2026-06-27T03:00:00Z"))
+    assert store.delete_category(1, "todo") == 2
+    assert [n.note_id for n in store.query_notes(1)] == ["c"]
+
+
+def test_delete_category_unknown_returns_zero(store):
+    store.put_note(1, _note("a", "todo", "2026-06-27T01:00:00Z"))
+    assert store.delete_category(1, "nope") == 0
+    assert [n.note_id for n in store.query_notes(1)] == ["a"]
+
+
+def test_delete_category_finds_notes_on_later_page(store):
+    """Regression guard: delete_category must paginate, mirroring mark_done."""
+    for i in range(120):
+        ts = f"2026-06-27T{(i // 60):02d}:{(i % 60):02d}:00Z"
+        store.put_note(1, _note_large(f"note-{i:03d}", "bulk", ts, text_size=10000))
+
+    assert store.delete_category(1, "bulk") == 120
+    assert store.query_notes(1) == []
+
+
 def test_mark_done_finds_note_on_later_page(store):
     """Regression guard: mark_done must paginate, not just read page 1.
 

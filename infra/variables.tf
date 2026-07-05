@@ -58,6 +58,12 @@ variable "history_exchanges" {
   default     = 10
 }
 
+variable "voice_max_seconds" {
+  type        = number
+  description = "Maximum duration of a voice note the bot will transcribe, in seconds."
+  default     = 120
+}
+
 variable "alarm_email" {
   type        = string
   description = "If set, an SNS email subscription is created for the billing alarm."

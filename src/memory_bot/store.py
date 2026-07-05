@@ -116,6 +116,37 @@ class Store:
 
         return False
 
+    def delete_category(self, user_id: int, category: str) -> int:
+        """Permanently delete every note in a category. Returns the count deleted.
+
+        Uses pagination to handle notes spanning multiple 1MB DynamoDB pages.
+        """
+        key_cond = Key("pk").eq(self._pk(user_id)) & Key("sk").begins_with("note#")
+        exclusive_start_key = None
+        deleted = 0
+
+        while True:
+            query_kwargs = {
+                "KeyConditionExpression": key_cond,
+            }
+            if exclusive_start_key is not None:
+                query_kwargs["ExclusiveStartKey"] = exclusive_start_key
+
+            resp = self._table.query(**query_kwargs)
+
+            for item in resp.get("Items", []):
+                if item.get("category") == category:
+                    self._table.delete_item(
+                        Key={"pk": item["pk"], "sk": item["sk"]}
+                    )
+                    deleted += 1
+
+            if "LastEvaluatedKey" not in resp:
+                break
+            exclusive_start_key = resp["LastEvaluatedKey"]
+
+        return deleted
+
     def set_timezone(self, user_id: int, tz: str) -> None:
         self._table.put_item(Item={"pk": self._pk(user_id), "sk": "settings", "tz": tz})
 

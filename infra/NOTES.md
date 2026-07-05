@@ -40,6 +40,8 @@ webhook with Telegram.
 - `billing_alarm_threshold_usd` — defaults to 5.
 - `history_exchanges` — how many recent user↔bot exchanges the bot remembers
   (default 10). Set to `0` to disable conversation memory.
+- `voice_max_seconds` — longest voice note the bot will transcribe, in seconds
+  (default 120). Longer notes are rejected before download.
 - `model`, `table_name` — override defaults if needed.
 
 ## Updating the bot

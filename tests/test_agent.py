@@ -257,6 +257,68 @@ def test_delete_note_tool_unknown_id_reports_not_found(deps):
     assert deps.store.query_notes(1)[0].note_id == "abc123"
 
 
+def test_delete_category_tool_removes_all_notes(deps):
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="a", text="deploy prod", category="work log",
+        created_at="2026-06-29T10:00:00Z", status="open",
+    ))
+    deps.store.put_note(1, Note(
+        note_id="b", text="write tests", category="work log",
+        created_at="2026-06-29T11:00:00Z", status="open",
+    ))
+    deps.store.put_note(1, Note(
+        note_id="c", text="buy milk", category="errands",
+        created_at="2026-06-29T12:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("delete_category", {"category": "work log"})]
+            )
+        return ModelResponse(parts=[TextPart("Removed.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        run_message(agent, deps, "delete the work log category")
+    assert [n.note_id for n in deps.store.query_notes(1)] == ["c"]
+
+
+def test_delete_category_tool_unknown_reports_none(deps):
+    from pydantic_ai.messages import ToolReturnPart
+
+    from memory_bot.models import Note
+
+    deps.store.put_note(1, Note(
+        note_id="a", text="buy milk", category="errands",
+        created_at="2026-06-29T12:00:00Z", status="open",
+    ))
+
+    def call(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if len(messages) == 1:
+            return ModelResponse(
+                parts=[ToolCallPart("delete_category", {"category": "nope"})]
+            )
+        return ModelResponse(parts=[TextPart("Nothing there.")])
+
+    agent = build_agent("anthropic:claude-sonnet-4-6")
+    with agent.override(model=FunctionModel(call)):
+        _, messages = run_message(agent, deps, "delete nope category")
+
+    returns = [
+        p.content
+        for m in messages
+        for p in m.parts
+        if isinstance(p, ToolReturnPart) and p.tool_name == "delete_category"
+    ]
+    assert returns, "expected a delete_category tool return"
+    assert "nope" in returns[0]
+    # The existing note must be untouched.
+    assert deps.store.query_notes(1)[0].note_id == "a"
+
+
 def _capture_instructions(agent, deps, text="hello", message_history=None):
     captured = []
 

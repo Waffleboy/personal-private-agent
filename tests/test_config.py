@@ -33,3 +33,15 @@ def test_history_exchanges_parsed():
         {"TELEGRAM_BOT_TOKEN": "tok", "MEMORY_BOT_HISTORY_EXCHANGES": "3"}
     )
     assert s.history_exchanges == 3
+
+
+def test_voice_max_seconds_default():
+    s = load_settings({"TELEGRAM_BOT_TOKEN": "tok"})
+    assert s.voice_max_seconds == 120
+
+
+def test_voice_max_seconds_parsed():
+    s = load_settings(
+        {"TELEGRAM_BOT_TOKEN": "tok", "MEMORY_BOT_VOICE_MAX_SECONDS": "300"}
+    )
+    assert s.voice_max_seconds == 300
