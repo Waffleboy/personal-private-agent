@@ -2,9 +2,12 @@
 
 ### What?
 
-This repo is a Telegram bot for capturing and recalling notes (you send, it stores and answers — it never pushes anything at you): send it unstructured notes or voice messages and it auto-files them into categories;
+This repo is a Telegram bot for capturing and recalling notes (you send, it stores and answers, never pushes anything at you): send it unstructured notes or voice messages and it auto-files them into categories;
 ask it questions, it answers from your notes. Serverless on AWS Lambda +
 DynamoDB, powered by Pydantic AI (model swappable via env var).
+| ![Auto categorizes text](images/image-1.png) | ![Handles voice notes via Gemini API](images/image.png)|
+| :---: | :---: |
+| Auto categorizes text | Handles voice notes via Gemini API |
 
 Notes are filed under broad, durable life-areas (e.g. `work`, `school`,
 `family`, `health`, `finance`, `todo`) rather than a restatement of the note
